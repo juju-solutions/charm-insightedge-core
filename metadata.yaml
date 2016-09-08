@@ -1,0 +1,22 @@
+name: insightendge
+summary: InsightEndge charm
+maintainer: Juju Big Data <bigdata@lists.ubuntu.com>
+description: >
+  InsightEdge is a high performance Spark distribution for low
+  latency workloads, high availability, and hybrid
+  transactional/analytical processing in one unified solution.
+tags: ["applications", "bigdata", "spark"]
+subordinate: true
+requires:
+  zeppelin:
+    interface: zeppelin
+    scope: container
+  spark:
+    interface: spark
+    scope: container
+resources:
+  InsightEdgeDiff:
+    type: file
+    filename: InsightEdge-1.0.0-juju-diff.tar.gz
+    description: The package with the InsightEdge files only
+
