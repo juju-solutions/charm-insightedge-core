@@ -1,10 +1,12 @@
 # pylint: disable=unused-argument
+import os
 import subprocess
 from charms.reactive import when, when_not, is_state, set_state, remove_state
 from charmhelpers.core.hookenv import status_set, resource_get, log
 from charmhelpers.core.host import chdir
-from charmhelpers.core import unitdata
+from charmhelpers.core import unitdata, host
 from distutils import dir_util
+from jujubigdata import utils
 
 
 @when_not('insightedge.fetched')
@@ -44,26 +46,69 @@ def setup_insightedge_on_spark(spark):
 def remove_insightedge_from_spark(spark):
     update_status()
     remove_state('insightedge.on.spark')
+    remove_state('insightedge.ready')
 
 
 @when_not('insightedge.on.zeppelin')
 @when('insightedge.fetched')
-@when('zeppelin.ready')
+@when('zeppelin.connected')
 def setup_insightedge_on_zeppelin(zeppelin):
-    update_status()
+    status_set('waiting', 'Deploying InsightEdge')
+    files = dir_util.copy_tree('/var/tmp/InsightEdge-1.0.0-juju-diff/zeppelin/notebook',
+                               '/usr/lib/zeppelin/notebook')
+    log("Files copied over from InsightEdge")
+    for f in files:
+        log(f)
     set_state('insightedge.on.zeppelin')
 
 
 @when('insightedge.on.zeppelin')
-@when_not('zeppelin.ready')
-def remove_insightedge_from_zeppelin(spark):
+@when_not('zeppelin.connected')
+def remove_insightedge_from_zeppelin():
     update_status()
     remove_state('insightedge.on.zeppelin')
+    remove_state('insightedge.ready')
 
+
+@when_not('insightedge.ready')
+@when('spark.ready', 'zeppelin.connected')
+def restart_services(spark, zeppelin):
+    stop_services()
+    start_services()
+    set_state('insightedge.ready')
+    update_status()
+
+
+def start_services():
+    host.service_start('spark-master')
+    host.service_start('spark-slave')
+    # TODO: all these configs
+    cmd = "/usr/lib/spark/sbin/start-datagrid-master.sh  -m localhost -s 1G".split()
+    subprocess.call(cmd, shell=False)
+    cmd = "/usr/lib/spark/sbin/start-datagrid-slave.sh --master localhost --locator localhost:4174 --group insightedge --name insightedge-space --topology 2,0 --size 1G --instances id=1;id=2".split()
+    subprocess.call(cmd, shell=False)
+
+
+def stop_services():
+    if utils.jps("HistoryServer"):
+        host.service_stop('spark-history')
+    if utils.jps("Master"):
+        host.service_stop('spark-master')
+    if utils.jps("Worker"):
+        host.service_stop('spark-slave')
+    if utils.jps("insightedge.marker=master"):
+        d = dict(os.environ)
+        d["TIMEOUT"] = str(10)
+        cmd = "/usr/lib/spark/sbin/stop-datagrid-master.sh"
+        subprocess.call(cmd, shell=True, env=d)
+    if utils.jps("insightedge.marker=slave"):
+        cmd = "/usr/lib/spark/sbin/stop-datagrid-slave.sh"
+        subprocess.call(cmd, shell=False)
 
 def update_status():
     spark_rel = is_state('spark.ready')
-    zeppelin_rel = is_state('zeppelin.ready')
+    zeppelin_rel = is_state('zeppelin.connected')
+    iedge_ready = is_state('insightedge.ready')
 
     if not spark_rel and not zeppelin_rel:
         status_set('blocked',
@@ -72,5 +117,7 @@ def update_status():
         status_set('blocked', 'Waiting for relation to Zeppelin')
     elif spark_rel and not zeppelin_rel:
         status_set('blocked', 'Waiting for relation to Spark')
+    elif not iedge_ready:
+        status_set('waiting', 'Waiting for services to restart')
     else:
         status_set('active', 'Ready')
