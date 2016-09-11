@@ -10,7 +10,6 @@ subordinate: true
 requires:
   zeppelin:
     interface: zeppelin
-    scope: container
   spark:
     interface: spark
     scope: container
@@ -19,4 +18,3 @@ resources:
     type: file
     filename: InsightEdge-1.0.0-juju-diff.tar.gz
     description: The package with the InsightEdge files only
-

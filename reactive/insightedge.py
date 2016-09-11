@@ -51,19 +51,26 @@ def remove_insightedge_from_spark(spark):
 
 @when_not('insightedge.on.zeppelin')
 @when('insightedge.fetched')
-@when('zeppelin.connected')
+@when('zeppelin.joined')
 def setup_insightedge_on_zeppelin(zeppelin):
     status_set('waiting', 'Deploying InsightEdge')
-    files = dir_util.copy_tree('/var/tmp/InsightEdge-1.0.0-juju-diff/zeppelin/notebook',
-                               '/usr/lib/zeppelin/notebook')
-    log("Files copied over from InsightEdge")
-    for f in files:
-        log(f)
+    nb_path = '/var/tmp/InsightEdge-1.0.0-juju-diff/zeppelin/notebook'
+    for note_dir in os.listdir(nb_path):
+        if note_dir.startswith('INSIGHTEDGE-'):
+            zeppelin.register_notebook(os.path.join(nb_path,
+                                                    note_dir,
+                                                    'note.json'))
     set_state('insightedge.on.zeppelin')
 
 
+@when('zeppelin.notebook.rejected')
+def rejected_notebook(zeppelin):
+    raise ValueError('Notebook rejected: {}'.format(
+        ', '.join(zeppelin.rejected_notebooks)))
+
+
 @when('insightedge.on.zeppelin')
-@when_not('zeppelin.connected')
+@when_not('zeppelin.joined')
 def remove_insightedge_from_zeppelin():
     update_status()
     remove_state('insightedge.on.zeppelin')
@@ -71,7 +78,7 @@ def remove_insightedge_from_zeppelin():
 
 
 @when_not('insightedge.ready')
-@when('spark.ready', 'zeppelin.connected')
+@when('spark.ready', 'zeppelin.joined')
 def restart_services(spark, zeppelin):
     stop_services()
     start_services()
@@ -83,10 +90,17 @@ def start_services():
     host.service_start('spark-master')
     host.service_start('spark-slave')
     # TODO: all these configs
-    cmd = "/usr/lib/spark/sbin/start-datagrid-master.sh  -m localhost -s 1G".split()
-    subprocess.call(cmd, shell=False)
-    cmd = "/usr/lib/spark/sbin/start-datagrid-slave.sh --master localhost --locator localhost:4174 --group insightedge --name insightedge-space --topology 2,0 --size 1G --instances id=1;id=2".split()
-    subprocess.call(cmd, shell=False)
+    subprocess.call(["/usr/lib/spark/sbin/start-datagrid-master.sh",
+                     "-m", "localhost",
+                     "-s", "1G"])
+    subprocess.call(["/usr/lib/spark/sbin/start-datagrid-slave.sh",
+                     "--master", "localhost",
+                     "--locator", "localhost:4174",
+                     "--group", "insightedge",
+                     "--name", "insightedge-space",
+                     "--topology", "2,0",
+                     "--size", "1G",
+                     "--instances", "id=1;id=2"])
 
 
 def stop_services():
@@ -105,9 +119,10 @@ def stop_services():
         cmd = "/usr/lib/spark/sbin/stop-datagrid-slave.sh"
         subprocess.call(cmd, shell=False)
 
+
 def update_status():
     spark_rel = is_state('spark.ready')
-    zeppelin_rel = is_state('zeppelin.connected')
+    zeppelin_rel = is_state('zeppelin.joined')
     iedge_ready = is_state('insightedge.ready')
 
     if not spark_rel and not zeppelin_rel:
