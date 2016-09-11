@@ -66,7 +66,7 @@ def setup_insightedge_on_zeppelin(zeppelin):
 @when('zeppelin.notebook.rejected')
 def rejected_notebook(zeppelin):
     raise ValueError('Notebook rejected: {}'.format(
-        ', '.join(zeppelin.rejected_notebooks)))
+        ', '.join(zeppelin.rejected_notebooks())))
 
 
 @when('insightedge.on.zeppelin')
@@ -78,7 +78,7 @@ def remove_insightedge_from_zeppelin():
 
 
 @when_not('insightedge.ready')
-@when('spark.ready', 'zeppelin.joined')
+@when('spark.ready', 'insightedge.on.spark')
 def restart_services(spark, zeppelin):
     stop_services()
     start_services()
