@@ -7,6 +7,7 @@ description: >
   transactional/analytical processing in one unified solution.
 tags: ["applications", "bigdata", "spark"]
 subordinate: true
+series: [trusty, xenial]
 requires:
   zeppelin:
     interface: zeppelin
