@@ -80,7 +80,7 @@ def remove_insightedge_from_zeppelin():
 
 @when_not('insightedge.ready')
 @when('insightedge.on.spark', 'insightedge.on.zeppelin')
-def restart_services(spark):
+def restart_services():
     stop_services()
     start_services()
     set_state('insightedge.ready')
