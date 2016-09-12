@@ -30,30 +30,30 @@ def fetch_insightedge():
 @when('insightedge.fetched')
 @when('spark.ready')
 def setup_insightedge_on_spark(spark):
-    status_set('waiting', 'Deploying InsightEdge')
+    status_set('maintenance', 'installing insightedge')
     files = dir_util.copy_tree('/var/tmp/InsightEdge-1.0.0-juju-diff',
                                '/usr/lib/spark/')
     log("Files copied over from InsightEdge")
     for f in files:
         log(f)
 
-    update_status()
     set_state('insightedge.on.spark')
+    update_status()
 
 
 @when('insightedge.on.spark')
 @when_not('spark.ready')
 def remove_insightedge_from_spark(spark):
-    update_status()
     remove_state('insightedge.on.spark')
     remove_state('insightedge.ready')
+    update_status()
 
 
 @when_not('insightedge.on.zeppelin')
 @when('insightedge.fetched')
 @when('zeppelin.joined')
 def setup_insightedge_on_zeppelin(zeppelin):
-    status_set('waiting', 'Deploying InsightEdge')
+    status_set('maintenance', 'registering notebook with zeppelin')
     nb_path = '/var/tmp/InsightEdge-1.0.0-juju-diff/zeppelin/notebook'
     for note_dir in os.listdir(nb_path):
         if note_dir.startswith('INSIGHTEDGE-'):
@@ -61,6 +61,7 @@ def setup_insightedge_on_zeppelin(zeppelin):
                                                     note_dir,
                                                     'note.json'))
     set_state('insightedge.on.zeppelin')
+    update_status()
 
 
 @when('zeppelin.notebook.rejected')
@@ -72,14 +73,14 @@ def rejected_notebook(zeppelin):
 @when('insightedge.on.zeppelin')
 @when_not('zeppelin.joined')
 def remove_insightedge_from_zeppelin():
-    update_status()
     remove_state('insightedge.on.zeppelin')
     remove_state('insightedge.ready')
+    update_status()
 
 
 @when_not('insightedge.ready')
-@when('spark.ready', 'insightedge.on.spark')
-def restart_services(spark, zeppelin):
+@when('insightedge.on.spark', 'insightedge.on.zeppelin')
+def restart_services(spark):
     stop_services()
     start_services()
     set_state('insightedge.ready')
