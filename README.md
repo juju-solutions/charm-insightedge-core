@@ -5,6 +5,7 @@ workloads, high availability, and hybrid transactional/analytical
 processing in one unified solution.
 
 Features:
+
  * Exposes Data Grid as Spark RDDs
  * Saves Spark RDDs to Data Grid
  * Full DataFrames API support with persistence
@@ -18,34 +19,16 @@ Features:
  * Off-Heap persistence
  * Interactive Web Notebook
  * Python support
- * Windows support
 
 ## Usage
 
-TBD
+This charm requires Apache Spark and Apache Zeppelin.  It is recommended to
+deploy this using the bundle:
 
+    juju deploy cs:~bigdata-dev/bundle/insightedge
 
-### Mirroring Resources
-
-In addition to apt packages, the Apache Hadoop charms require a few binary
-resources, which are normally hosted on Launchpad. If access to Launchpad
-is not available, the `jujuresources` library makes it easy to create a mirror
-of these resources:
-
-    sudo pip install jujuresources
-    juju-resources fetch --all /path/to/resources.yaml -d /tmp/resources
-    juju-resources serve -d /tmp/resources
-
-This will fetch all of the resources needed by this charm and serve them via a
-simple HTTP server. The output from `juju-resources serve` will give you a
-URL that you can set as the `resources_mirror` config option for this charm.
-Setting this option will cause all resources required by this charm to be
-downloaded from the configured URL.
-
-You can fetch the resources for all of the Apache Hadoop charms
-(`apache-hadoop-hdfs-master`, `apache-hadoop-yarn-master`,
-`apache-hadoop-compute-slave`, `apache-hadoop-plugin`, etc) into a single
-directory and serve them all with a single `juju-resources serve` instance.
+You can then use `juju status` to get address for the service and then open
+it in your web browser like `http://<address>:9090/`
 
 
 ## Contact Information
