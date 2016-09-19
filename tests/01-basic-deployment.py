@@ -18,7 +18,7 @@ class TestDeploy(unittest.TestCase):
         self.d.load({
             'services': {
                 'spark': {'charm': 'apache-spark'},
-                'insightedge': {'charm': 'insightedge'},
+                'insightedge': {'charm': 'insightedge-core'},
             },
             'relations': [('spark', 'insightedge')],
         })

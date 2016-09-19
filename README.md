@@ -25,7 +25,7 @@ Features:
 This charm requires Apache Spark and Apache Zeppelin.  It is recommended to
 deploy this using the bundle:
 
-    juju deploy cs:~bigdata-dev/bundle/insightedge
+    juju deploy cs:~gigaspaces/bundle/insightedge
 
 You can then use `juju status` to get address for the service and then open
 it in your web browser like `http://<address>:9090/`
@@ -36,6 +36,6 @@ it in your web browser like `http://<address>:9090/`
 - <bigdata@lists.ubuntu.com>
 
 
-## Hadoop
+## Additional Resources and Information
 
 - [InsightEdge](http://insightedge.io/) home page

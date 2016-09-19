@@ -1,4 +1,4 @@
-repo: git@github.com:juju-solutions/layer-insightedge.git
+repo: git@github.com:juju-solutions/charm-insightedge-core.git
 includes: ['layer:basic', 'interface:spark', 'interface:zeppelin']
 options:
   basic:
