@@ -11,9 +11,10 @@ from jujubigdata import utils
 
 @when_not('insightedge.fetched')
 def fetch_insightedge():
+    status_set("maintenance", "fetching insightedge")
     result = resource_get('InsightEdgeDiff')
     if not result:
-        set_state("blocked", "Failed to fetch InsightEdge resource")
+        status_set("blocked", "unable to fetch insightedge resource")
         log("Failed to fetch InsightEdge resource")
         return
 
@@ -60,6 +61,21 @@ def setup_insightedge_on_zeppelin(zeppelin):
             zeppelin.register_notebook(os.path.join(nb_path,
                                                     note_dir,
                                                     'note.json'))
+    zeppelin.modify_interpreter(
+        interpreter_name='spark',
+        properties={
+            'insightedge.locator': '127.0.0.1:4174',
+            'insightedge.group': 'insightedge',
+            'insightedge.spaceName': 'insightedge-space',
+            'spark.externalBlockStore.blockManager': 'org.apache.spark.storage.InsightEdgeBlockManager',
+        },
+        interpreter_group=[
+            {
+                'name': 'define',
+                'class': 'org.apache.zeppelin.spark.CompilingInterpreter',
+            }
+        ],
+    )
     set_state('insightedge.on.zeppelin')
     update_status()
 
