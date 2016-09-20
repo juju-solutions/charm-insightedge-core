@@ -69,12 +69,6 @@ def setup_insightedge_on_zeppelin(zeppelin):
             'insightedge.spaceName': 'insightedge-space',
             'spark.externalBlockStore.blockManager': 'org.apache.spark.storage.InsightEdgeBlockManager',
         },
-        interpreter_group=[
-            {
-                'name': 'define',
-                'class': 'org.apache.zeppelin.spark.CompilingInterpreter',
-            }
-        ],
     )
     set_state('insightedge.on.zeppelin')
     update_status()
