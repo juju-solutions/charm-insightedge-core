@@ -9,13 +9,11 @@ tags: ["applications", "bigdata", "spark"]
 subordinate: true
 series: [trusty, xenial]
 requires:
-  zeppelin:
-    interface: zeppelin
   spark:
     interface: spark
     scope: container
 resources:
-  InsightEdgeDiff:
+  insightedge:
     type: file
-    filename: InsightEdge-1.0.0-juju-diff.tar.gz
-    description: The package with the InsightEdge files only
+    filename: insightedge.tar.gz
+    description: The InsightEdge distribution

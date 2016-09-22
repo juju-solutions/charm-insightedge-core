@@ -1,149 +1,94 @@
 # pylint: disable=unused-argument
 import os
 import subprocess
-from charms.reactive import when, when_not, is_state, set_state, remove_state
-from charmhelpers.core.hookenv import status_set, resource_get, log
-from charmhelpers.core.host import chdir
-from charmhelpers.core import unitdata, host
-from distutils import dir_util
+from path import Path
+from charms.reactive import when, when_not, set_state
+from charms.reactive.helpers import data_changed
+from charmhelpers.core import hookenv
+from charmhelpers.core import host
+from charmhelpers import fetch
 from jujubigdata import utils
 
 
-@when_not('insightedge.fetched')
-def fetch_insightedge():
-    status_set("maintenance", "fetching insightedge")
-    result = resource_get('InsightEdgeDiff')
-    if not result:
-        status_set("blocked", "unable to fetch insightedge resource")
-        log("Failed to fetch InsightEdge resource")
-        return
-
-    unitdata.kv().set("insigthedgetarball", result)
-    log("InsightEdgeDiff path is {}".format(result))
-    with chdir('/var/tmp'):
-        cmd = 'tar -zxvf {}'.format(result).split()
-        subprocess.call(cmd, shell=False)
-
-    set_state('insightedge.fetched')
-
-
-@when_not('insightedge.on.spark')
-@when('insightedge.fetched')
-@when('spark.ready')
-def setup_insightedge_on_spark(spark):
-    status_set('maintenance', 'installing insightedge')
-    files = dir_util.copy_tree('/var/tmp/InsightEdge-1.0.0-juju-diff',
-                               '/usr/lib/spark/')
-    log("Files copied over from InsightEdge")
-    for f in files:
-        log(f)
-
-    set_state('insightedge.on.spark')
-    update_status()
-
-
-@when('insightedge.on.spark')
 @when_not('spark.ready')
-def remove_insightedge_from_spark(spark):
-    remove_state('insightedge.on.spark')
-    remove_state('insightedge.ready')
-    update_status()
+def report_waiting():
+    hookenv.status_set('waiting', 'waiting for spark')
 
 
-@when_not('insightedge.on.zeppelin')
-@when('insightedge.fetched')
-@when('zeppelin.joined')
-def setup_insightedge_on_zeppelin(zeppelin):
-    status_set('maintenance', 'registering notebook with zeppelin')
-    nb_path = '/var/tmp/InsightEdge-1.0.0-juju-diff/zeppelin/notebook'
-    for note_dir in os.listdir(nb_path):
-        if note_dir.startswith('INSIGHTEDGE-'):
-            zeppelin.register_notebook(os.path.join(nb_path,
-                                                    note_dir,
-                                                    'note.json'))
-    zeppelin.modify_interpreter(
-        interpreter_name='spark',
-        properties={
-            'insightedge.locator': '127.0.0.1:4174',
-            'insightedge.group': 'insightedge',
-            'insightedge.spaceName': 'insightedge-space',
-            'spark.externalBlockStore.blockManager': 'org.apache.spark.storage.InsightEdgeBlockManager',
-        },
-    )
-    set_state('insightedge.on.zeppelin')
-    update_status()
+@when('spark.ready')
+@when_not('insightedge.installed')
+def setup_insightedge_on_spark(spark):
+    destination = Path('/usr/lib/insightedge')
+    if not destination.exists():
+        hookenv.status_set('maintenance', 'fetching insightedge')
+        filename = hookenv.resource_get('insightedge')
+        if not filename:
+            hookenv.status_set("blocked",
+                               "unable to fetch insightedge resource")
+            hookenv.log("Failed to fetch InsightEdge resource")
+            return
+
+        hookenv.status_set('maintenance', 'installing insightedge')
+        extracted = Path(fetch.install_remote('file://' + filename))
+        destination.rmtree_p()  # in case doing a re-install
+        extracted.dirs()[0].copytree(destination)  # copy nested dir contents
+
+    hookenv.status_set('maintenance', 'configuring insightedge')
+    with host.chdir(destination):
+        insightedge_jars = subprocess.check_output([
+            'bash', '-c',
+            '. {}; get_libs ,'.format(
+                destination / 'sbin' / 'common-insightedge.sh'
+            )
+        ], env={'INSIGHTEDGE_HOME': destination}).decode('utf8')
+    spark.register_classpaths(insightedge_jars.split(','))
+
+    set_state('insightedge.installed')
 
 
-@when('zeppelin.notebook.rejected')
-def rejected_notebook(zeppelin):
-    raise ValueError('Notebook rejected: {}'.format(
-        ', '.join(zeppelin.rejected_notebooks())))
-
-
-@when('insightedge.on.zeppelin')
-@when_not('zeppelin.joined')
-def remove_insightedge_from_zeppelin():
-    remove_state('insightedge.on.zeppelin')
-    remove_state('insightedge.ready')
-    update_status()
-
-
-@when_not('insightedge.ready')
-@when('insightedge.on.spark', 'insightedge.on.zeppelin')
-def restart_services():
-    stop_services()
-    start_services()
+@when('spark.ready')
+@when('insightedge.installed')
+def restart_services(spark):
+    master_info = spark.get_master_info()
+    master_url = master_info['connection_string']
+    if data_changed('insightedge.master_url', master_url):
+        master_ip = master_info['master']
+        local_ip = utils.resolve_private_address(hookenv.unit_private_ip())
+        is_master = master_ip == local_ip
+        stop_datagrid_services()
+        start_datagrid_services(master_url,
+                                is_master,
+                                not is_master or not spark.is_scaled())
     set_state('insightedge.ready')
-    update_status()
+    hookenv.status_set('active', 'ready')
 
 
-def start_services():
-    host.service_start('spark-master')
-    host.service_start('spark-slave')
-    # TODO: all these configs
-    subprocess.call(["/usr/lib/spark/sbin/start-datagrid-master.sh",
-                     "-m", "localhost",
-                     "-s", "1G"])
-    subprocess.call(["/usr/lib/spark/sbin/start-datagrid-slave.sh",
-                     "--master", "localhost",
-                     "--locator", "localhost:4174",
-                     "--group", "insightedge",
-                     "--name", "insightedge-space",
-                     "--topology", "2,0",
-                     "--size", "1G",
-                     "--instances", "id=1;id=2"])
+def start_datagrid_services(master_url, is_master, is_slave):
+    # TODO:
+    #   * only start datagrid-master when on spark-master unit
+    #   * only start datagrid-slave when on spark-slave unit
+    #   * some of the below settings should be exposed as charm config
+    if is_master:
+        subprocess.call(["/usr/lib/insightedge/sbin/start-datagrid-master.sh",
+                         "-m", "localhost",
+                         "-s", "1G"])
+    if is_slave:
+        subprocess.call(["/usr/lib/insightedge/sbin/start-datagrid-slave.sh",
+                         "--master", master_url,
+                         "--locator", "localhost:4174",
+                         "--group", "insightedge",
+                         "--name", "insightedge-space",
+                         "--topology", "2,0",
+                         "--size", "1G",
+                         "--instances", "id=1;id=2"])
 
 
-def stop_services():
-    if utils.jps("HistoryServer"):
-        host.service_stop('spark-history')
-    if utils.jps("Master"):
-        host.service_stop('spark-master')
-    if utils.jps("Worker"):
-        host.service_stop('spark-slave')
+def stop_datagrid_services():
     if utils.jps("insightedge.marker=master"):
         d = dict(os.environ)
         d["TIMEOUT"] = str(10)
-        cmd = "/usr/lib/spark/sbin/stop-datagrid-master.sh"
+        cmd = "/usr/lib/insightedge/sbin/stop-datagrid-master.sh"
         subprocess.call(cmd, shell=True, env=d)
     if utils.jps("insightedge.marker=slave"):
-        cmd = "/usr/lib/spark/sbin/stop-datagrid-slave.sh"
+        cmd = "/usr/lib/insightedge/sbin/stop-datagrid-slave.sh"
         subprocess.call(cmd, shell=False)
-
-
-def update_status():
-    spark_rel = is_state('spark.ready')
-    zeppelin_rel = is_state('zeppelin.joined')
-    iedge_ready = is_state('insightedge.ready')
-
-    if not spark_rel and not zeppelin_rel:
-        status_set('blocked',
-                   'Waiting for relation to Spark and Zeppelin')
-    elif spark_rel and not zeppelin_rel:
-        status_set('blocked', 'Waiting for relation to Zeppelin')
-    elif spark_rel and not zeppelin_rel:
-        status_set('blocked', 'Waiting for relation to Spark')
-    elif not iedge_ready:
-        status_set('waiting', 'Waiting for services to restart')
-    else:
-        status_set('active', 'Ready')
